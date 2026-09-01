@@ -7,6 +7,8 @@
 
 use crate::{Binding, ScanError};
 
+mod plist_file;
+
 pub mod accessibility;
 pub mod nsuserkeyequivalents;
 pub mod symbolichotkeys;

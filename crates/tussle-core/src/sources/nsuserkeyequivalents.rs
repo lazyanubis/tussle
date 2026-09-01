@@ -18,6 +18,12 @@ use std::path::{Path, PathBuf};
 use crate::{Binding, BindingSource, Key, KeyCombo, Modifiers, ScanError};
 
 use super::Source;
+use super::plist_file;
+
+const MAX_MENU_ITEM_BYTES: usize = 1024;
+const MAX_BINDINGS_PER_PLIST: usize = 1024;
+const MAX_PREFERENCE_PLISTS: usize = 10_000;
+const MAX_TOTAL_OVERRIDE_BINDINGS: usize = 10_000;
 
 /// Walks every plist in a preferences directory looking for
 /// `NSUserKeyEquivalents` overrides — the per-app menu shortcut customizations
@@ -55,15 +61,7 @@ pub fn parse(path: &Path) -> Result<Vec<Binding>, ScanError> {
         message: "filename has no bundle id stem".into(),
     })?;
 
-    let bytes = std::fs::read(path).map_err(|source| ScanError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-
-    let value: plist::Value = plist::from_bytes(&bytes).map_err(|e| ScanError::Schema {
-        path: path.to_path_buf(),
-        message: format!("plist parse: {e}"),
-    })?;
+    let value = plist_file::parse_value(path)?;
 
     let Some(root) = value.as_dictionary() else {
         // Plists with non-dictionary roots have no NSUserKeyEquivalents.
@@ -79,6 +77,12 @@ pub fn parse(path: &Path) -> Result<Vec<Binding>, ScanError> {
 
     let mut bindings = Vec::new();
     for (menu_item, value) in equivs {
+        if bindings.len() == MAX_BINDINGS_PER_PLIST {
+            break;
+        }
+        if menu_item.len() > MAX_MENU_ITEM_BYTES {
+            continue;
+        }
         let Some(shorthand) = value.as_string() else {
             continue;
         };
@@ -118,13 +122,28 @@ fn scan(prefs_dir: &Path) -> Result<Vec<Binding>, ScanError> {
     })?;
 
     let mut bindings = Vec::new();
+    let mut plist_count = 0usize;
     for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_file() {
+            continue;
+        }
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("plist") {
             continue;
         }
+        if plist_count == MAX_PREFERENCE_PLISTS {
+            break;
+        }
+        plist_count += 1;
         if let Ok(found) = parse(&path) {
-            bindings.extend(found);
+            let remaining = MAX_TOTAL_OVERRIDE_BINDINGS.saturating_sub(bindings.len());
+            bindings.extend(found.into_iter().take(remaining));
+            if bindings.len() == MAX_TOTAL_OVERRIDE_BINDINGS {
+                break;
+            }
         }
     }
 
@@ -160,10 +179,12 @@ fn parse_keystroke(s: &str) -> Option<KeyCombo> {
         return None;
     }
 
-    Some(KeyCombo {
-        modifiers,
-        key: Key::Char(key_char),
-    })
+    let key = Key::from_char(key_char);
+    if matches!(key, Key::Char(ch) if ch.is_control()) {
+        return None;
+    }
+
+    Some(KeyCombo { modifiers, key })
 }
 
 #[cfg(test)]
@@ -224,6 +245,11 @@ mod tests {
     #[test]
     fn parse_keystroke_empty_returns_none() {
         assert_eq!(parse_keystroke(""), None);
+    }
+
+    #[test]
+    fn parse_keystroke_rejects_unrecognized_control_character() {
+        assert_eq!(parse_keystroke("\u{009b}"), None);
     }
 
     #[test]

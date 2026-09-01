@@ -26,17 +26,15 @@ pub(super) enum GroupBy {
 struct Cli {
     /// Per-app Accessibility messaging timeout, in seconds. Caps how long
     /// a single non-responsive app can stall the scan. Set to `0` to use
-    /// the macOS default (~6s).
+    /// the macOS default (~6s). Positive values are capped at 60 seconds.
     #[arg(long, global = true, default_value_t = 1.0, value_name = "SECS")]
     ax_timeout: f32,
 
-    /// Defensive cap on the number of apps walked in parallel. `0` means
-    /// no cap (one OS thread per app, all at once). Default 512 — sized
-    /// to be effectively unbounded for any realistic session (typical
-    /// 50–100 apps, even extreme sessions 200–400). Set lower only if you
-    /// have a really pathological process count and would rather pay extra
-    /// wallclock than spawn that many sleeping threads at once.
-    #[arg(long, global = true, default_value_t = 512, value_name = "N")]
+    /// Defensive cap on the number of apps walked in parallel. `0` uses
+    /// the built-in hard cap of 128. Larger values are also capped at 128.
+    /// Default 128 keeps typical 50–100 app sessions in one batch while
+    /// larger sessions are processed in bounded batches.
+    #[arg(long, global = true, default_value_t = 128, value_name = "N")]
     ax_concurrency: usize,
 
     /// Increase log verbosity. `-v` INFO (high-level progress), `-vv` DEBUG

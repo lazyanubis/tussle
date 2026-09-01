@@ -7,7 +7,7 @@ use tabled::settings::Style;
 use tussle_core::capture::{self, Captured};
 use tussle_core::{Binding, KeyCombo};
 
-use crate::cli::output::emit_json;
+use crate::cli::output::{emit_json, escape_terminal_text};
 use crate::cli::sources::{default_sources, warn_if_no_accessibility};
 
 pub fn who(
@@ -40,11 +40,15 @@ pub fn who(
                 );
                 matches.extend(found.into_iter().filter(|b| b.combo == combo));
             }
-            Err(e) => tracing::warn!(source = src.name(), error = %e, "source failed"),
+            Err(e) => {
+                let error = escape_terminal_text(&e.to_string());
+                tracing::warn!(source = src.name(), error = %error, "source failed");
+            }
         }
     }
+    let combo_display = escape_terminal_text(&combo.to_string());
     tracing::info!(
-        combo = %combo,
+        combo = %combo_display,
         matches = matches.len(),
         "lookup complete",
     );
@@ -54,14 +58,17 @@ pub fn who(
     }
 
     if matches.is_empty() {
-        println!("nothing bound to {combo}");
+        println!("nothing bound to {}", combo_display);
         return Ok(());
     }
 
     let mut builder = Builder::default();
     builder.push_record(["Owner", "Action"]);
     for b in &matches {
-        builder.push_record([b.source.owner(), b.label.as_str()]);
+        builder.push_record([
+            escape_terminal_text(b.source.owner()),
+            escape_terminal_text(&b.label),
+        ]);
     }
     println!();
     println!("{}", builder.build().with(Style::psql()));

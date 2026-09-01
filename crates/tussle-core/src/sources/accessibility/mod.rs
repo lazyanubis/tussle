@@ -20,13 +20,12 @@ use super::Source;
 pub struct Accessibility {
     /// Per-app `AXUIElementSetMessagingTimeout`, in seconds. Values `<= 0`
     /// leave the system default in place. Tight values (e.g. 1.0) prevent a
-    /// single non-responsive app from stalling the whole scan.
+    /// single non-responsive app from stalling the whole scan. Positive
+    /// values are capped at 60 seconds by the macOS implementation.
     pub messaging_timeout: f32,
-    /// Defensive cap on the number of apps walked in parallel. `0` means
-    /// no cap (one OS thread per app, all at once). Default 512 — well
-    /// above any realistic running-app count (typical 50–100, extreme
-    /// sessions 200–400), so the chunked path is essentially a safety net
-    /// for pathological cases (600+ processes).
+    /// Defensive cap on the number of apps walked in parallel. `0` uses
+    /// the implementation's hard cap of 128. Default 128 keeps typical
+    /// sessions in one batch while bounding thread creation for larger ones.
     pub max_concurrency: usize,
     /// Optional case-insensitive substring filter on bundle id / app name.
     /// Empty = scan every running app. Non-empty = retain only apps whose
@@ -40,7 +39,7 @@ impl Default for Accessibility {
     fn default() -> Self {
         Self {
             messaging_timeout: 1.0,
-            max_concurrency: 512,
+            max_concurrency: 128,
             bundle_filter: Vec::new(),
         }
     }

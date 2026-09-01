@@ -6,7 +6,7 @@ use tabled::settings::Style;
 use tussle_core::{Binding, ComboToken};
 
 use crate::cli::GroupBy;
-use crate::cli::output::emit_json;
+use crate::cli::output::{emit_json, escape_terminal_text};
 use crate::cli::sources::{default_sources, warn_if_no_accessibility};
 
 pub fn scan(
@@ -42,7 +42,10 @@ pub fn scan(
                 );
                 bindings.extend(found);
             }
-            Err(e) => tracing::warn!(source = src.name(), error = %e, "source failed"),
+            Err(e) => {
+                let error = escape_terminal_text(&e.to_string());
+                tracing::warn!(source = src.name(), error = %error, "source failed");
+            }
         }
     }
 
@@ -62,8 +65,7 @@ pub fn scan(
             let owner_lc = b.source.owner().to_lowercase();
             let bundle_lc = b.source.bundle_id().map(str::to_lowercase);
             filter_lc.iter().any(|f| {
-                owner_lc.contains(f)
-                    || bundle_lc.as_deref().is_some_and(|s| s.contains(f))
+                owner_lc.contains(f) || bundle_lc.as_deref().is_some_and(|s| s.contains(f))
             })
         });
     }
@@ -112,7 +114,11 @@ pub fn scan(
     let mut builder = Builder::default();
     builder.push_record(["Combo", "Owner", "Action"]);
     for b in &bindings {
-        builder.push_record([&format!("{}", b.combo), b.source.owner(), &b.label]);
+        builder.push_record([
+            escape_terminal_text(&b.combo.to_string()),
+            escape_terminal_text(b.source.owner()),
+            escape_terminal_text(&b.label),
+        ]);
     }
     // Blank line so the table doesn't visually butt up against any
     // preceding stderr log lines when both share the same TTY.

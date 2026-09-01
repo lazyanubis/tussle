@@ -16,6 +16,7 @@ use crate::combo::vk_to_named;
 use crate::{Binding, BindingSource, Key, KeyCombo, Modifiers, NamedKey, ScanError};
 
 use super::Source;
+use super::plist_file;
 
 /// Reads `com.apple.symbolichotkeys.plist` and merges its contents with
 /// macOS's hardcoded default table.
@@ -49,6 +50,9 @@ const PARAM_MASK: usize = 2;
 
 /// Sentinel value Apple writes when a parameter slot is unset.
 const UNSET: i64 = 65535;
+/// The real macOS table is only a few hundred entries. Bound corrupted or
+/// attacker-controlled preference data before allocating the override map.
+const MAX_SYMBOLIC_HOTKEY_ENTRIES: usize = 4096;
 
 // NSEvent modifier flag bits, from `AppKit/NSEvent.h`:
 //   NSEventModifierFlagShift    = 1 << 17  = 0x0002_0000
@@ -127,15 +131,7 @@ fn emit(id: u32, combo: KeyCombo) -> Binding {
 }
 
 fn parse_overrides(path: &Path) -> Result<HashMap<u32, Override>, ScanError> {
-    let bytes = std::fs::read(path).map_err(|source| ScanError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-
-    let value: plist::Value = plist::from_bytes(&bytes).map_err(|e| ScanError::Schema {
-        path: path.to_path_buf(),
-        message: format!("plist parse: {e}"),
-    })?;
+    let value = plist_file::parse_value(path)?;
 
     let root = value.as_dictionary().ok_or_else(|| ScanError::Schema {
         path: path.to_path_buf(),
@@ -151,7 +147,7 @@ fn parse_overrides(path: &Path) -> Result<HashMap<u32, Override>, ScanError> {
         })?;
 
     let mut map = HashMap::new();
-    for (id_str, entry) in entries {
+    for (id_str, entry) in entries.iter().take(MAX_SYMBOLIC_HOTKEY_ENTRIES) {
         let Ok(id) = id_str.parse::<u32>() else {
             continue;
         };
@@ -344,19 +340,20 @@ fn decode_modifiers(mask: u64) -> Modifiers {
 fn decode_key(char_code: i64, vk: i64) -> Key {
     // Virtual keycode wins for keys with a canonical NamedKey, since the vk
     // is layout-independent while the char_code reflects the active layout.
-    if vk != UNSET && (0..=u16::MAX as i64).contains(&vk) {
-        if let Some(named) = vk_to_named(vk as u16) {
-            return Key::Named(named);
-        }
+    if vk != UNSET
+        && (0..=u16::MAX as i64).contains(&vk)
+        && let Some(named) = vk_to_named(vk as u16)
+    {
+        return Key::Named(named);
     }
 
     // Fall back to the printable character if Apple set one.
-    if char_code != UNSET && (0..=u32::MAX as i64).contains(&char_code) {
-        if let Some(c) = char::from_u32(char_code as u32) {
-            if !c.is_control() {
-                return Key::Char(c);
-            }
-        }
+    if char_code != UNSET
+        && (0..=u32::MAX as i64).contains(&char_code)
+        && let Some(c) = char::from_u32(char_code as u32)
+        && !c.is_control()
+    {
+        return Key::Char(c);
     }
 
     // Last resort: surface the raw vk so the caller can still see what was

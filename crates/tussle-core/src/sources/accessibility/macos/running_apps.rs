@@ -14,6 +14,8 @@
 
 use objc2_app_kit::{NSApplicationActivationPolicy, NSWorkspace};
 
+const MAX_APP_IDENTITY_BYTES: usize = 4096;
+
 pub(super) struct RunningApp {
     pub(super) pid: i32,
     pub(super) bundle_id: Option<String>,
@@ -51,8 +53,14 @@ pub(super) fn list_running_apps() -> Vec<RunningApp> {
         }
         out.push(RunningApp {
             pid: app.processIdentifier(),
-            bundle_id: app.bundleIdentifier().map(|s| s.to_string()),
-            app_name: app.localizedName().map(|s| s.to_string()),
+            bundle_id: app.bundleIdentifier().and_then(|s| {
+                let value = s.to_string();
+                (value.len() <= MAX_APP_IDENTITY_BYTES).then_some(value)
+            }),
+            app_name: app.localizedName().and_then(|s| {
+                let value = s.to_string();
+                (value.len() <= MAX_APP_IDENTITY_BYTES).then_some(value)
+            }),
         });
     }
     tracing::debug!(

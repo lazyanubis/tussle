@@ -22,9 +22,7 @@ pub(super) fn default_sources(
             prefs.join("com.apple.symbolichotkeys.plist"),
         )),
         Box::new(AppMenuOverrides::new(prefs.clone())),
-        Box::new(
-            Accessibility::new(ax_timeout, ax_concurrency).with_bundle_filter(app_filter),
-        ),
+        Box::new(Accessibility::new(ax_timeout, ax_concurrency).with_bundle_filter(app_filter)),
     ])
 }
 

@@ -30,7 +30,7 @@ cd tussle
 cargo install --path crates/tussle-cli
 ```
 
-Requires macOS and Rust 1.85+ (edition 2024). Uninstall with
+Requires macOS and Rust 1.97+ (edition 2024). Uninstall with
 `cargo uninstall tussle-cli`.
 
 ## Usage

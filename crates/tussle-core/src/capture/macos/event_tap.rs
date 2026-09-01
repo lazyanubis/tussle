@@ -84,7 +84,5 @@ where
     let captured = captured
         .lock()
         .map_err(|_| capture_error("lock poisoned"))?;
-    captured
-        .clone()
-        .ok_or_else(|| capture_error("event tap exited without capturing a key"))
+    (*captured).ok_or_else(|| capture_error("event tap exited without capturing a key"))
 }
